@@ -2,7 +2,8 @@ dofile('config.lua')
 dofile('shared/contract.lua')
 dofile('client/regions.lua')
 local W,R,passed=Weather,WeatherRegions,0
-local hashes={GrizzliesWest=0x62162401,NewAustin=0x79E6A26B,Guarma=0x7356B8ED}
+local hashes={GrizzliesWest=0x62162401,NewAustin=0x79E6A26B,GaptoothRidge=0x84D7AD0E,
+    ChollaSprings=0xF9831C72,RioBravo=0x8016C23F,HennigansStead=0x35390B10,GuarmaD=0xE1736CD7}
 local function hash(name) return hashes[name] end
 local function policy(change)
     local c=W.Copy(WeatherConfig.regions); c.enabled=true
@@ -14,8 +15,8 @@ local function eq(a,b) assert(a==b,('expected %s; got %s'):format(tostring(b),to
 local function test(name,fn) fn(); passed=passed+1; print('PASS '..name) end
 local global={[0]=0,[10]=0}
 local snow={[0]=0,[10]=hashes.GrizzliesWest}
-local desert={[0]=hashes.NewAustin,[10]=0}
-local tropical={[0]=hashes.Guarma,[10]=0}
+local desert={[10]=hashes.GaptoothRidge}
+local tropical={[10]=hashes.GuarmaD}
 local function settle(r,observation,now) r:Observe(observation,now or 0); r:Observe(observation,(now or 0)+2) end
 
 test('optional missing/disabled region configuration remains valid',function()
@@ -40,10 +41,16 @@ test('snow district commits only after stable membership',function()
     r:Observe(snow,1); eq(r:Context(1).id,'global')
     r:Observe(snow,2); eq(r:Context(2).id,'grizzlies_snow')
 end)
-test('snow policy translates authoritative rain and requests snow coverage',function()
+test('default snow policy translates precipitation without forcing ground coverage',function()
     local r=model(); settle(r,snow)
-    local name,coverage=r:Translate('rain',false); eq(name,'snow'); eq(coverage,true)
+    local name,coverage=r:Translate('rain',false); eq(name,'snow'); eq(coverage,false)
     eq(r:Translate('drizzle',false),'snowlight'); eq(r:Translate('thunderstorm',false),'blizzard')
+end)
+
+test('custom automatic coverage remains opt-in and clears on regional exit',function()
+    local r=model(function(c) c.rules[1].autoSnow=true end); settle(r,snow)
+    local _,coverage=r:Translate('rain',false); eq(coverage,true)
+    settle(r,global,3); _,coverage=r:Translate('rain',false); eq(coverage,false)
 end)
 test('unmapped sunny weather stays sunny without forced snow',function()
     local r=model(); settle(r,snow)
@@ -79,11 +86,11 @@ test('teleport between policies uses a bounded fresh candidate interval',functio
 end)
 test('priority wins overlaps; configuration order resolves ties',function()
     local r=model(function(c)
-        c.rules[2].zones={'NewAustin'}; c.rules[2].priority=100
+        c.rules[2].zoneType=0; c.rules[2].zones={'NewAustin'}; c.rules[2].priority=100
     end)
     settle(r,{[0]=hashes.NewAustin,[10]=hashes.GrizzliesWest})
     eq(r:Context(2).id,'grizzlies_snow')
-    r=model(function(c) c.rules[2].priority=101 end)
+    r=model(function(c) c.rules[2].zoneType=0; c.rules[2].zones={'NewAustin'}; c.rules[2].priority=101 end)
     settle(r,{[0]=hashes.NewAustin,[10]=hashes.GrizzliesWest})
     eq(r:Context(2).id,'new_austin_dry')
 end)
@@ -108,8 +115,21 @@ test('district-only observation reproduces live Grizzlies probe and selects snow
     eq(r:Translate('rain',false),'snow')
 end)
 test('state-only observation selects its policy independently',function()
-    local r=model(); settle(r,{[0]=hashes.NewAustin})
+    local r=model(function(c) c.rules[2].zoneType=0; c.rules[2].zones={'NewAustin'} end)
+    settle(r,{[0]=hashes.NewAustin})
     eq(r:Context(2).id,'new_austin_dry'); eq(r:Translate('rain',false),'drizzle')
+end)
+test('live Valentine district stays global while unsigned Tumbleweed selects desert',function()
+    local r=model(); settle(r,{[0]=false,[10]=131399519})
+    eq(r:Context(2).id,'global'); eq(r:Translate('rain',false),'rain')
+    settle(r,{[0]=false,[10]=2228727054},3)
+    eq(r:Context(5).id,'new_austin_dry'); eq(r:Translate('rain',false),'drizzle')
+end)
+test('each catalogued New Austin district can match without a state',function()
+    for _,name in ipairs({'GaptoothRidge','ChollaSprings','RioBravo','HennigansStead'}) do
+        local r=model(); settle(r,{[10]=hashes[name]})
+        eq(r:Context(2).id,'new_austin_dry')
+    end
 end)
 test('false missing zone does not discard another valid type',function()
     local r=model(); settle(r,{[0]=false,[10]=hashes.GrizzliesWest})

@@ -412,7 +412,8 @@ do
     timer,owner,conflict=0,nil,false
     outgoing,applications={},{}
     WeatherConfig.regions.enabled=true
-    local zoneHashes={GrizzliesWest=0x62162401,NewAustin=0x79E6A26B,Guarma=0x7356B8ED}
+    local zoneHashes={GrizzliesWest=0x62162401,GaptoothRidge=0x84D7AD0E,
+        ChollaSprings=0xF9831C72,RioBravo=0x8016C23F,HennigansStead=0x35390B10,GuarmaD=0xE1736CD7}
     local stateHash,districtHash,probeCalls=0,0,0
     function GetHashKey(name) return zoneHashes[name] end
     function PlayerPedId() return 42 end
@@ -437,7 +438,7 @@ do
         districtHash=zoneHashes.GrizzliesWest
         for _=1,3 do clientTick(1000) end
         local applied=applications[#applications]
-        eq(applied.weather.name,'snow'); eq(applied.snow,true)
+        eq(applied.weather.name,'snow'); eq(applied.snow,false)
         eq(applied.authoritativeWeather,'rain'); eq(clientAuthority.weather.name,'rain')
         eq(clientAuthority.revision,before.revision)
         eq(applied.weather.transitionSeconds,10)
@@ -460,7 +461,7 @@ do
         eq(applications[#applications].weather.name,'rain'); eq(applications[#applications].snow,false)
     end)
     test('desert translation preserves global forced coverage as separate authority',function()
-        stateHash=zoneHashes.NewAustin
+        stateHash=0; districtHash=zoneHashes.GaptoothRidge
         assert(clientAuthority:Mutate('weather',{name='snow',snow=true}).ok)
         source=65535; events['feather-weather:snapshot'](clientAuthority:Snapshot())
         for _=1,3 do clientTick(1000) end

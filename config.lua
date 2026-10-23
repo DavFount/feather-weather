@@ -24,20 +24,21 @@ WeatherConfig = {
         rules = {
             {
                 id = 'grizzlies_snow', priority = 100, zoneType = 10,
-                zones = { 'GrizzliesWest' }, autoSnow = true,
+                -- Preserve natural mountain coverage; only translate precipitation.
+                zones = { 'GrizzliesWest' }, autoSnow = false,
                 weather = { rain='snow', drizzle='snowlight', shower='snowlight',
                     thunderstorm='blizzard', hurricane='whiteout' }
             },
             {
-                id = 'new_austin_dry', priority = 50, zoneType = 0,
-                zones = { 'NewAustin' }, autoSnow = false,
+                id = 'new_austin_dry', priority = 50, zoneType = 10,
+                zones = { 'GaptoothRidge', 'ChollaSprings', 'RioBravo', 'HennigansStead' }, autoSnow = false,
                 weather = { rain='drizzle', shower='drizzle', thunderstorm='thunder',
                     hurricane='sandstorm', snow='overcast', snowlight='overcast',
                     blizzard='overcastdark', groundblizzard='overcastdark', whiteout='overcastdark', sleet='drizzle' }
             },
             {
-                id = 'guarma_tropical', priority = 50, zoneType = 0,
-                zones = { 'Guarma' }, autoSnow = false,
+                id = 'guarma_tropical', priority = 50, zoneType = 10,
+                zones = { 'GuarmaD' }, autoSnow = false,
                 weather = { snow='rain', snowlight='drizzle', blizzard='thunderstorm',
                     groundblizzard='rain', whiteout='thunderstorm', sleet='drizzle' }
             }

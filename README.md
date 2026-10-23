@@ -1,6 +1,6 @@
 # Feather Weather
 
-World time, weather, and climate synchronization for RedM. Version `0.2.1`, Contract 1.
+World time, weather, and climate synchronization for RedM. Version `0.2.2`, Contract 1.
 
 A standalone service with no mandatory Core, database, Menu, or UI dependency. The initial baseline and Character integration have recorded user-reported live acceptance. Regional presentation in 0.2.0 is opt-in and still requires supported-build zone/boundary/visual acceptance.
 
@@ -50,9 +50,9 @@ Included policy candidates use named zones from the map-zone catalogue, not boun
 
 | Policy | Membership | Example translation |
 | --- | --- | --- |
-| `grizzlies_snow` | District `GrizzliesWest` (type 10) | Rain → snow, drizzle/shower → snowlight, thunderstorm → blizzard. Request forced coverage while the resulting regional weather is snowy. |
-| `new_austin_dry` | State `NewAustin` (type 0) | Rain/shower → drizzle; snow → overcast; exceptional hurricane → sandstorm. This reduces precipitation rather than banning desert rain. |
-| `guarma_tropical` | State `Guarma` (type 0) | Snow → rain, snowlight/sleet → drizzle, blizzard → thunderstorm. |
+| `grizzlies_snow` | District `GrizzliesWest` (type 10) | Rain → snow, drizzle/shower → snowlight, thunderstorm → blizzard. Preserve natural mountain ground coverage; no automatic forced coating (`autoSnow=false`). |
+| `new_austin_dry` | Districts `GaptoothRidge`, `ChollaSprings`, `RioBravo`, `HennigansStead` (type 10) | Rain/shower → drizzle; snow → overcast; exceptional hurricane → sandstorm. This reduces precipitation rather than banning desert rain. |
+| `guarma_tropical` | District `GuarmaD` (type 10) | Snow → rain, snowlight/sleet → drizzle, blizzard → thunderstorm. |
 
 These are configurable design policies, not accepted climate boundaries or guarantees about every subarea. Western Grizzlies is deliberately a named district; whether its whole footprint should receive snow needs live review. Unmapped weather and ordinary/unknown zones retain shared weather. No native temperature read affects translation, avoiding local temperature/weather feedback loops.
 
