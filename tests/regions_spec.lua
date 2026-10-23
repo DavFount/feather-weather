@@ -22,7 +22,8 @@ local function settle(r,observation,now) r:Observe(observation,now or 0); r:Obse
 test('optional missing/disabled region configuration remains valid',function()
     local c=W.Copy(WeatherConfig); c.regions=nil; assert(W.Config(c))
     local called=false
-    local r=R.New(WeatherConfig.regions,function() called=true end)
+    local disabled=policy(); disabled.enabled=false
+    local r=R.New(disabled,function() called=true end)
     r:Sample(1,function() called=true end)
     eq(called,false); eq(r:Context(1).status,'disabled')
     local name,coverage=r:Translate('rain',false); eq(name,'rain'); eq(coverage,false)

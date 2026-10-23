@@ -14,10 +14,10 @@ WeatherConfig = {
     },
     -- Initial release holds base wind constant; automatic wind/shear is deferred.
     wind = { direction = 0, speed = 0 },
-    -- Opt-in regional presentation. Named zone membership and visual policy require
-    -- supported-build acceptance before enabling on a production server.
+    -- Regional presentation enabled by default after representative gameplay acceptance.
+    -- Set enabled=false for global-only presentation.
     regions = {
-        enabled = false,
+        enabled = true,
         sampleIntervalMs = 1000,
         settleMs = 2000,
         transitionSeconds = 10,

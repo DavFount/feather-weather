@@ -306,6 +306,9 @@ test('console command mutation uses validated setters', function()
 end)
 
 -- Actual client entry point with a deterministic coroutine scheduler and native recorder.
+-- These baseline cases isolate global presentation; regional cases enable it below.
+assert(WeatherConfig.regions.enabled==true, 'Shipped regional default must be enabled')
+WeatherConfig.regions.enabled=false
 registered, events, threads = {}, {}, {}
 timer, owner, conflict = 0, nil, false
 local outgoing, applications, releases = {}, {}, 0
