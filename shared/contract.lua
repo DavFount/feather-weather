@@ -68,9 +68,42 @@ function W.Merge(current, patch, validate)
     if not validate(nextValue) then return nil end
     return nextValue
 end
+function W.RegionalPolicy(policy)
+    -- Absent policy preserves installations using the 0.1.x configuration.
+    if policy == nil then return true end
+    if not W.Fields(policy, {enabled=true,sampleIntervalMs=true,settleMs=true,transitionSeconds=true,rules=true})
+        or type(policy.enabled) ~= 'boolean'
+        or not W.Number(policy.sampleIntervalMs, 250, 10000, true)
+        or not W.Number(policy.settleMs, 0, 30000, true)
+        or not W.Number(policy.transitionSeconds, 0, 300)
+        or type(policy.rules) ~= 'table' or getmetatable(policy.rules) then return false end
+    local count, ids = 0, {}
+    for index, rule in pairs(policy.rules) do
+        if not W.Number(index,1,16,true) or not W.Fields(rule,
+            {id=true,priority=true,zoneType=true,zones=true,autoSnow=true,weather=true})
+            or type(rule.id) ~= 'string' or #rule.id < 1 or #rule.id > 48
+            or rule.id == 'global' or not rule.id:match('^[a-z][a-z0-9_]*$') or ids[rule.id]
+            or not W.Number(rule.priority,0,1000,true) or (rule.zoneType ~= 0 and rule.zoneType ~= 10)
+            or type(rule.autoSnow) ~= 'boolean' or type(rule.zones) ~= 'table' or getmetatable(rule.zones)
+            or type(rule.weather) ~= 'table' or getmetatable(rule.weather) then return false end
+        ids[rule.id], count = true, count + 1
+        local zoneCount, seen = 0, {}
+        for zoneIndex, name in pairs(rule.zones) do
+            if not W.Number(zoneIndex,1,16,true) or type(name) ~= 'string'
+                or #name < 1 or #name > 64 or not name:match('^[%w_]+$') or seen[name:lower()] then return false end
+            seen[name:lower()], zoneCount = true, zoneCount + 1
+        end
+        if zoneCount < 1 or zoneCount ~= #rule.zones then return false end
+        for from, to in pairs(rule.weather) do
+            if not W.types[from] or type(to) ~= 'string' or not W.types[to] then return false end
+        end
+    end
+    return count == #policy.rules and (not policy.enabled or count > 0)
+end
 function W.Config(config)
     if type(config) ~= 'table' or not W.Clock(config.clock) or not W.Weather(config.weather)
-        or not W.Wind(config.wind) or not W.Pattern(config.pattern) then return false end
+        or not W.Wind(config.wind) or not W.Pattern(config.pattern)
+        or not W.RegionalPolicy(config.regions) then return false end
     if not W.Number(config.weatherIntervalSeconds, 60, W.WEEK, true)
         or not W.Number(config.forecastCount, 1, 48, true)
         or not W.Number(config.syncIntervalMs, 1000, 60000, true)

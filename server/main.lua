@@ -47,7 +47,9 @@ local function Capabilities()
     return W.Ok({ resource=resource, version=GetResourceMetadata(resource, 'version', 0), contract=W.CONTRACT,
         state=status, restartPolicy='reset_to_config', rejectedRequests=rejected,
         features={ clock=1, weather=1, forecast=1, baseWind=1, snowCoverage=1, localOverrides=1,
-            regions=false, automaticWind=false, persistence=false },
+            regions=1, automaticWind=false, persistence=false },
+        regionPolicy={enabled=engine ~= nil and engine.config.regions ~= nil and engine.config.regions.enabled or false,
+            ruleCount=engine and engine.config.regions and #engine.config.regions.rules or 0},
         limits={ maxForecast=engine and engine.config.forecastCount or 0, maxRate=120, maxTransitionSeconds=300 } })
 end
 

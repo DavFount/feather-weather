@@ -3,6 +3,7 @@ dofile('config.lua')
 dofile('shared/contract.lua')
 dofile('server/engine.lua')
 dofile('client/overrides.lua')
+dofile('client/regions.lua')
 local W, passed, failed = Weather, 0, 0
 local function test(name, callback)
     local ok, message = pcall(callback)
@@ -404,6 +405,80 @@ test('new server epoch requires matched fresh bootstrap', function()
     reply(); clientTick()
     eq(#applications, before+1); eq(registered.GetLocalState().value.epoch, 'test:2')
 end)
+
+-- Enabled-region actual-client integration with injected native observations.
+do
+    registered,events,threads={},{},{}
+    timer,owner,conflict=0,nil,false
+    outgoing,applications={},{}
+    WeatherConfig.regions.enabled=true
+    local zoneHashes={GrizzliesWest=0x62162401,NewAustin=0x79E6A26B,Guarma=0x7356B8ED}
+    local stateHash,districtHash,probeCalls=0,0,0
+    function GetHashKey(name) return zoneHashes[name] end
+    function PlayerPedId() return 42 end
+    function GetEntityCoords() return {x=0,y=0,z=100} end
+    Citizen={InvokeNative=function(native,_,_,_,zoneType)
+        assert(native==0x43AD8FC02B429D33)
+        probeCalls=probeCalls+1
+        return zoneType==0 and stateHash or districtHash
+    end}
+    WeatherNative={Apply=function(state) applications[#applications+1]=W.Copy(state) end,Release=function() end}
+    dofile('client/main.lua')
+    clientThread=coroutine.create(threads[1])
+    clientAuthority=engine()
+    assert(clientAuthority:Mutate('weather',{name='rain',transitionSeconds=0,frozen=true,snow=false}).ok)
+    clientTick(); reply(); clientTick()
+    test('enabled region client starts with global weather in ordinary zones',function()
+        eq(applications[#applications].weather.name,'rain')
+        eq(applications[#applications].region.id,'global')
+    end)
+    test('movement translates rain without a new global event or server mutation',function()
+        local before=clientAuthority:Snapshot()
+        districtHash=zoneHashes.GrizzliesWest
+        for _=1,3 do clientTick(1000) end
+        local applied=applications[#applications]
+        eq(applied.weather.name,'snow'); eq(applied.snow,true)
+        eq(applied.authoritativeWeather,'rain'); eq(clientAuthority.weather.name,'rain')
+        eq(clientAuthority.revision,before.revision)
+        eq(applied.weather.transitionSeconds,10)
+    end)
+    test('unchanged regional weather retains its transition identity',function()
+        local token=applications[#applications].weatherToken
+        clientTick(1000); eq(applications[#applications].weatherToken,token)
+    end)
+    test('Character-style explicit channels bypass climate and suppress regional snow',function()
+        owner='scene'; sceneHandle=registered.AcquireOverride(scene(10,30)).value.handle
+        clientTick(); eq(applications[#applications].weather.name,'sunny'); eq(applications[#applications].snow,false)
+        eq(applications[#applications].clock,43200)
+    end)
+    test('region sampling continues under scenes and release uses latest location',function()
+        districtHash=0
+        for _=1,3 do clientTick(1000) end
+        eq(applications[#applications].region.id,'global')
+        eq(applications[#applications].weather.name,'sunny')
+        assert(registered.ReleaseOverride(sceneHandle).ok); clientTick()
+        eq(applications[#applications].weather.name,'rain'); eq(applications[#applications].snow,false)
+    end)
+    test('desert translation preserves global forced coverage as separate authority',function()
+        stateHash=zoneHashes.NewAustin
+        assert(clientAuthority:Mutate('weather',{name='snow',snow=true}).ok)
+        source=65535; events['feather-weather:snapshot'](clientAuthority:Snapshot())
+        for _=1,3 do clientTick(1000) end
+        eq(applications[#applications].weather.name,'overcast'); eq(applications[#applications].snow,true)
+    end)
+    test('client loop bounds zone native calls to two per sample',function()
+        local before=probeCalls
+        for _=1,20 do clientTick(250) end
+        eq(probeCalls-before,10)
+    end)
+    test('explicit region probe only reads zones and does not advance regional state',function()
+        local before=probeCalls
+        local current=registered.GetLocalState().value.effective.region.revision
+        commands.fwregion(0,{'probe'})
+        eq(probeCalls-before,2)
+        eq(registered.GetLocalState().value.effective.region.revision,current)
+    end)
+end
 
 -- Native calls are inspected for dispatch/cadence only; this is not visual acceptance.
 local nativeCalls = {}

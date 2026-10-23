@@ -1,8 +1,8 @@
 # Feather Weather
 
-World time, weather, and climate synchronization for RedM. Version `0.1.1`, Contract 1.
+World time, weather, and climate synchronization for RedM. Version `0.2.0`, Contract 1.
 
-A standalone service with no mandatory Core, database, Menu, or UI dependency. The initial baseline has recorded user-reported solo and three-player acceptance. New consumer integrations still require their own gameplay tests.
+A standalone service with no mandatory Core, database, Menu, or UI dependency. The initial baseline and Character integration have recorded user-reported live acceptance. Regional presentation in 0.2.0 is opt-in and still requires supported-build zone/boundary/visual acceptance.
 
 ## Installation
 
@@ -29,6 +29,7 @@ This resource does not modify your recipe, server configuration, or other resour
 | `pattern` | Closed graph of ordered `{ name, weight }` rows, each totaling 100. All destinations must have rows. |
 | `forecastCount` | Queued future weather states, `1..48`. |
 | `wind` | Constant base direction `0..<360` and speed `0..30`; visual orientation/strength require supported-build acceptance. |
+| `regions` | Optional named-zone presentation policy; disabled by default. See regional presentation below. Missing section preserves the 0.1.x global-only behavior. |
 | `syncIntervalMs` | Periodic coherent correction, `1000..60000` ms; defaults to 5000. Changes also broadcast immediately. |
 | `tickIntervalMs` / `clientIntervalMs` | Bounded server timing and client application cadence; defaults to 250 ms each. No per-frame loop. |
 | `maxCatchUpSteps` | Bounded automatic transitions after a delayed tick, `1..128`. Longer stalls hold current weather, reset the interval, rebuild forecast, and increment `catchUpResets`. |
@@ -37,9 +38,42 @@ This resource does not modify your recipe, server configuration, or other resour
 | `maxOverrides` / `maxOverrideSeconds` | Local handle count and maximum renewable lifetime; defaults 16 / 1800 seconds. |
 | `conflictResources` | Known competing providers. Defaults to `{ 'weathersync' }`. |
 
-Defaults provide sunny/clouds/overcast/rain progression, 30x clock, and constant calm wind. Weather forecast entries are global policy; this version has no regional translation, dynamic snow, altitude wind, or automatic wind progression. There is no FiveM support or bundled NUI.
+Defaults provide sunny/clouds/overcast/rain progression, 30x clock, and constant calm wind. Weather forecast entries remain global policy even when optional local translation is enabled. There is no temperature-driven climate, altitude wind, automatic wind progression, FiveM support, or bundled NUI.
 
 If manual weather has no graph row, automatic progression resumes through the configured default row, or the alphabetically first graph row when the default is absent. Setting a pattern can therefore replace the entire graph safely.
+
+## Regional presentation
+
+Set `regions.enabled=true` only after checking your supported-build zone observations and accepting the configured climate rules. Restart Weather to reload configuration; its normal reset-to-config semantics still apply. There is no remote regional toggle or client-supplied region authority.
+
+Included policy candidates use named zones from the map-zone catalogue, not bounding-box coordinate guesses:
+
+| Policy | Membership | Example translation |
+| --- | --- | --- |
+| `grizzlies_snow` | District `GrizzliesWest` (type 10) | Rain → snow, drizzle/shower → snowlight, thunderstorm → blizzard. Request forced coverage while the resulting regional weather is snowy. |
+| `new_austin_dry` | State `NewAustin` (type 0) | Rain/shower → drizzle; snow → overcast; exceptional hurricane → sandstorm. This reduces precipitation rather than banning desert rain. |
+| `guarma_tropical` | State `Guarma` (type 0) | Snow → rain, snowlight/sleet → drizzle, blizzard → thunderstorm. |
+
+These are configurable design policies, not accepted climate boundaries or guarantees about every subarea. Western Grizzlies is deliberately a named district; whether its whole footprint should receive snow needs live review. Unmapped weather and ordinary/unknown zones retain shared weather. No native temperature read affects translation, avoiding local temperature/weather feedback loops.
+
+The regional selector samples state/district at `sampleIntervalMs` (default 1000, bounds 250..10000), requiring stable candidate membership for `settleMs` (default 2000, bounds 0..30000). A boundary bounce cancels a pending switch. Higher priority wins overlaps; earlier configured rule wins ties. At most 16 rules, each with 1..16 named zones, are admitted. `transitionSeconds` controls the boundary blend (default 10, bounds 0..300). No independent regional clock, RNG, weather schedule, or forecast queue is created.
+
+Each mapping is applied once to the current authoritative weather; translated output is never fed back as the next input. Automatic regional snow coverage is requested only by a matching `autoSnow=true` rule and a snowy translated weather. Leaving that policy restores shared coverage intent. An explicit global `weather.snow=true` remains authoritative even in desert/tropical rules. Primary coverage (`false`) does not promise removal of the engine's natural mountain snow.
+
+Explicit scene weather bypasses regional weather translation; explicit scene snow overrides regional coverage. Channels remain independent: overriding weather alone does not implicitly claim the snow channel. Character's existing four-channel scene therefore remains noon/sunny/calm/primary coverage in every region. Sampling continues beneath scenes so final release uses the current location and latest shared state.
+
+Enabled policy probes at most two zone natives per eligible sample, with no per-frame region loop. Disabled/absent policy performs no automatic zone probes. Native exceptions/malformed observations fail back to shared presentation and expose a regional diagnostic error; stable observations can recover. A feature flag of `regions=1` means implementation support; `GetCapabilities().value.regionPolicy.enabled` reports actual startup enablement.
+
+Client **F8** commands:
+
+```text
+fwregion probe
+fwregion
+```
+
+`probe` performs an explicit read-only state/district observation even with policy disabled; it neither applies climate nor mutates authority. `fwregion` reports configured enablement, current/pending rule, observed zone hashes, sample age/error, and requested base/effective weather/snow. It is diagnostic output, not proof that the region or visuals are correct. Server `fwstate` reports support and enablement; it does not know a player's effective native zone.
+
+`GetLocalState().value.effective` adds `region` diagnostics and `authoritativeWeather`; its existing `weather`/`snow` fields remain effective requested presentation. Server `GetState()` and `GetForecast()` are unchanged/global. Never treat these local observations as authoritative gameplay eligibility, damage, or persistence input.
 
 ## Result convention
 

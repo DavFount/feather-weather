@@ -1,9 +1,11 @@
 local W, resource = Weather, GetCurrentResourceName()
 local valid = W.Config(WeatherConfig)
 local overrides = valid and WeatherOverrides.New(WeatherConfig, ('local:%s'):format(GetGameTimer())) or nil
+local regions = valid and WeatherRegions.New(WeatherConfig.regions, GetHashKey) or nil
 local snapshot, receivedAt, latency, effective, pending
 local sequence, nextRequest, nowSeconds, previousTimer = 0, 0, 0, GetGameTimer()
 local status, lastError, lastPrinted = 'waiting', nil, nil
+local ProbeZones
 
 local function Now()
     local timer = GetGameTimer()
@@ -62,6 +64,25 @@ exports('GetLocalState', function()
         effective=effective, snapshotAgeSeconds=Now() - receivedAt, lastError=lastError,
         evidence='application_attempt_only' }))
 end)
+RegisterCommand('fwregion', function(_,args)
+    if not regions then print('[feather-weather] regional policy unavailable'); return end
+    if args and args[1] == 'probe' and #args == 1 then
+        -- Explicit read-only experiment, usable while policy is disabled.
+        local ok, zones=pcall(ProbeZones)
+        local observedState=ok and type(zones)=='table' and WeatherRegions.Hash(zones[0]) or nil
+        local observedDistrict=ok and type(zones)=='table' and WeatherRegions.Hash(zones[10]) or nil
+        local observed=observedState ~= nil and observedDistrict ~= nil
+        print('[feather-weather] ' .. json.encode({ok=observed,action='region_probe',
+            state=observedState,district=observedDistrict,evidence='zone_observation_only',
+            error=not observed and (ok and 'zone_probe_unavailable' or tostring(zones)) or nil}))
+        return
+    end
+    if args and #args > 0 then print('[feather-weather] Usage: fwregion [probe] in client F8.'); return end
+    print('[feather-weather] ' .. json.encode({region=regions:Context(Now()),
+        authoritativeWeather=snapshot and snapshot.weather.name,
+        effectiveWeather=effective and effective.weather.name,
+        effectiveSnow=effective and effective.snow, evidence='application_attempt_only'}))
+end, false)
 exports('AcquireOverride', function(spec)
     local unavailable = Available()
     if unavailable then return unavailable end
@@ -89,13 +110,27 @@ local function Project(now)
     local clock = snapshot.clock.seconds
     if not snapshot.clock.frozen then clock = (clock + age * W.Rate(snapshot.clock)) % W.WEEK end
     local transition = math.max(0, snapshot.transitionRemainingSeconds - age)
+    local regionalName, regionalSnow = regions:Translate(snapshot.weather.name,snapshot.weather.snow)
+    -- Crossing a climate boundary blends even when global weather has not changed.
+    transition = math.max(transition,regions:TransitionFloor(now))
     return { clock=winners.clock and winners.clock.value or clock,
-        weather=winners.weather and winners.weather.value or { name=snapshot.weather.name, transitionSeconds=transition },
+        weather=winners.weather and winners.weather.value or { name=regionalName, transitionSeconds=transition },
         weatherToken=winners.weather and winners.weather.token
-            or (snapshot.epoch .. ':' .. snapshot.transitionId .. ':' .. snapshot.weather.name),
+            or (snapshot.epoch .. ':' .. snapshot.transitionId .. ':' .. regionalName),
         wind=winners.wind and winners.wind.value or snapshot.wind,
-        snow=winners.snow and winners.snow.value or (not winners.snow and snapshot.weather.snow or false),
-        channels=winners, overrideCount=count }
+        snow=winners.snow and winners.snow.value or (not winners.snow and regionalSnow or false),
+        channels=winners, overrideCount=count, region=regions:Context(now), authoritativeWeather=snapshot.weather.name }
+end
+
+ProbeZones = function()
+    local ped=PlayerPedId()
+    if ped == 0 then return nil end
+    local coords=GetEntityCoords(ped)
+    if not coords or not W.Number(coords.x,-100000,100000)
+        or not W.Number(coords.y,-100000,100000) or not W.Number(coords.z,-100000,100000) then return nil end
+    -- _GET_MAP_ZONE_AT_COORDS: STATE=0, DISTRICT=10. No temperature feedback.
+    return {[0]=Citizen.InvokeNative(0x43AD8FC02B429D33,coords.x,coords.y,coords.z,0),
+        [10]=Citizen.InvokeNative(0x43AD8FC02B429D33,coords.x,coords.y,coords.z,10)}
 end
 
 CreateThread(function()
@@ -115,6 +150,7 @@ CreateThread(function()
             local stale = snapshot and now - receivedAt > WeatherConfig.syncIntervalMs / 1000 * 3 + 10
             if (not snapshot or stale) and now >= nextRequest then Request(now) end
             if snapshot then
+                regions:Sample(now,ProbeZones)
                 effective = Project(now)
                 local applied, message = pcall(WeatherNative.Apply, effective)
                 status = applied and (stale and 'degraded' or 'ready') or 'native_error'

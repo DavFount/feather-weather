@@ -14,6 +14,35 @@ WeatherConfig = {
     },
     -- Initial release holds base wind constant; automatic wind/shear is deferred.
     wind = { direction = 0, speed = 0 },
+    -- Opt-in regional presentation. Named zone membership and visual policy require
+    -- supported-build acceptance before enabling on a production server.
+    regions = {
+        enabled = false,
+        sampleIntervalMs = 1000,
+        settleMs = 2000,
+        transitionSeconds = 10,
+        rules = {
+            {
+                id = 'grizzlies_snow', priority = 100, zoneType = 10,
+                zones = { 'GrizzliesWest' }, autoSnow = true,
+                weather = { rain='snow', drizzle='snowlight', shower='snowlight',
+                    thunderstorm='blizzard', hurricane='whiteout' }
+            },
+            {
+                id = 'new_austin_dry', priority = 50, zoneType = 0,
+                zones = { 'NewAustin' }, autoSnow = false,
+                weather = { rain='drizzle', shower='drizzle', thunderstorm='thunder',
+                    hurricane='sandstorm', snow='overcast', snowlight='overcast',
+                    blizzard='overcastdark', groundblizzard='overcastdark', whiteout='overcastdark', sleet='drizzle' }
+            },
+            {
+                id = 'guarma_tropical', priority = 50, zoneType = 0,
+                zones = { 'Guarma' }, autoSnow = false,
+                weather = { snow='rain', snowlight='drizzle', blizzard='thunderstorm',
+                    groundblizzard='rain', whiteout='thunderstorm', sleet='drizzle' }
+            }
+        }
+    },
     syncIntervalMs = 5000,
     tickIntervalMs = 250,
     clientIntervalMs = 250,
