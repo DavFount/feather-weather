@@ -478,6 +478,17 @@ do
         eq(probeCalls-before,2)
         eq(registered.GetLocalState().value.effective.region.revision,current)
     end)
+    test('actual client accepts district-only region sample from live report',function()
+        stateHash=nil; districtHash=zoneHashes.GrizzliesWest
+        -- The fake native must preserve nil for STATE instead of using Lua's and/or fallback.
+        Citizen.InvokeNative=function(_,_,_,_,kind)
+            if kind==0 then return nil end
+            return districtHash
+        end
+        for _=1,3 do clientTick(1000) end
+        eq(applications[#applications].region.id,'grizzlies_snow')
+        commands.fwregion(0,{'probe'})
+    end)
 end
 
 -- Native calls are inspected for dispatch/cadence only; this is not visual acceptance.

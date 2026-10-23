@@ -6,7 +6,7 @@ lua54 'yes'
 name 'feather-weather'
 description 'World time, weather, and climate synchronization for RedM'
 author 'Feather Framework'
-version '0.2.0'
+version '0.2.1'
 
 shared_scripts {
     'config.lua',

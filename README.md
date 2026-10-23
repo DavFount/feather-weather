@@ -1,6 +1,6 @@
 # Feather Weather
 
-World time, weather, and climate synchronization for RedM. Version `0.2.0`, Contract 1.
+World time, weather, and climate synchronization for RedM. Version `0.2.1`, Contract 1.
 
 A standalone service with no mandatory Core, database, Menu, or UI dependency. The initial baseline and Character integration have recorded user-reported live acceptance. Regional presentation in 0.2.0 is opt-in and still requires supported-build zone/boundary/visual acceptance.
 
@@ -62,7 +62,7 @@ Each mapping is applied once to the current authoritative weather; translated ou
 
 Explicit scene weather bypasses regional weather translation; explicit scene snow overrides regional coverage. Channels remain independent: overriding weather alone does not implicitly claim the snow channel. Character's existing four-channel scene therefore remains noon/sunny/calm/primary coverage in every region. Sampling continues beneath scenes so final release uses the current location and latest shared state.
 
-Enabled policy probes at most two zone natives per eligible sample, with no per-frame region loop. Disabled/absent policy performs no automatic zone probes. Native exceptions/malformed observations fail back to shared presentation and expose a regional diagnostic error; stable observations can recover. A feature flag of `regions=1` means implementation support; `GetCapabilities().value.regionPolicy.enabled` reports actual startup enablement.
+Enabled policy probes at most two zone natives per eligible sample, with no per-frame region loop. Disabled/absent policy performs no automatic zone probes. State and district observations are independent: a missing state does not discard a valid district, and vice versa. Missing types remain absent in diagnostics; they are not guessed or inferred. Total lookup failure or malformed observations fall back to shared presentation with a regional diagnostic error; stable observations can recover. A feature flag of `regions=1` means implementation support; `GetCapabilities().value.regionPolicy.enabled` reports actual startup enablement.
 
 Client **F8** commands:
 

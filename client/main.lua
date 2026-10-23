@@ -69,12 +69,13 @@ RegisterCommand('fwregion', function(_,args)
     if args and args[1] == 'probe' and #args == 1 then
         -- Explicit read-only experiment, usable while policy is disabled.
         local ok, zones=pcall(ProbeZones)
-        local observedState=ok and type(zones)=='table' and WeatherRegions.Hash(zones[0]) or nil
-        local observedDistrict=ok and type(zones)=='table' and WeatherRegions.Hash(zones[10]) or nil
-        local observed=observedState ~= nil and observedDistrict ~= nil
-        print('[feather-weather] ' .. json.encode({ok=observed,action='region_probe',
-            state=observedState,district=observedDistrict,evidence='zone_observation_only',
-            error=not observed and (ok and 'zone_probe_unavailable' or tostring(zones)) or nil}))
+        local observed,problem=WeatherRegions.Observation(ok and zones or nil)
+        print('[feather-weather] ' .. json.encode({ok=observed ~= nil,action='region_probe',
+            state=observed and observed[0],district=observed and observed[10],
+            stateType=ok and type(zones)=='table' and type(zones[0]) or nil,
+            districtType=ok and type(zones)=='table' and type(zones[10]) or nil,
+            missing=observed and {state=observed[0]==nil,district=observed[10]==nil},
+            evidence='zone_observation_only', error=not observed and (ok and problem or tostring(zones)) or nil}))
         return
     end
     if args and #args > 0 then print('[feather-weather] Usage: fwregion [probe] in client F8.'); return end

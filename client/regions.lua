@@ -9,6 +9,22 @@ function R.Hash(value)
     return value % 4294967296
 end
 
+function R.Observation(value)
+    if type(value) ~= 'table' then return nil, 'zone_probe_unavailable' end
+    local observed={}
+    for _,kind in ipairs({0,10}) do
+        local raw=value[kind]
+        if raw ~= nil and raw ~= false then
+            local hash=R.Hash(raw)
+            if hash == nil then return nil, 'zone_probe_malformed' end
+            observed[kind]=hash
+        end
+    end
+    if observed[0] == nil and observed[10] == nil then return nil, 'zone_probe_unavailable' end
+    -- Each zone type is independent. Missing STATE does not invalidate DISTRICT.
+    return observed
+end
+
 function R.New(policy, hashName)
     assert(W.RegionalPolicy(policy), 'invalid regional policy')
     local self = setmetatable({policy=W.Copy(policy or {enabled=false}), rules={},
@@ -35,14 +51,15 @@ end
 
 function R:Observe(observation, now)
     if not self.policy.enabled then return end
-    -- A native error or malformed observation fails back to shared presentation.
-    if type(observation) ~= 'table' or R.Hash(observation[0]) == nil or R.Hash(observation[10]) == nil then
+    -- Total failure/malformed data falls back; a valid single zone remains usable.
+    local observed,problem=R.Observation(observation)
+    if not observed then
         if self.current then self.revision=self.revision+1; self.blendUntil=now+self.policy.transitionSeconds end
         self.current,self.pending,self.pendingSince,self.observation=nil,nil,nil,{}
-        self.status,self.error='fallback','zone_probe_failed'
+        self.status,self.error='fallback',problem
         return
     end
-    self.observation = {[0]=R.Hash(observation[0]), [10]=R.Hash(observation[10])}
+    self.observation = observed
     self.error = nil
     local candidate
     for _, rule in ipairs(self.rules) do
