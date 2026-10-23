@@ -1,8 +1,8 @@
 # Feather Weather
 
-World time, weather, and climate synchronization for RedM. Version `0.1.0`, Contract 1.
+World time, weather, and climate synchronization for RedM. Version `0.1.1`, Contract 1.
 
-A standalone service with no mandatory Core, database, Menu, or UI dependency. The initial implementation has offline validation; native visuals and multiplayer behavior still require live acceptance before replacing an existing provider.
+A standalone service with no mandatory Core, database, Menu, or UI dependency. The initial baseline has recorded user-reported solo and three-player acceptance. New consumer integrations still require their own gameplay tests.
 
 ## Installation
 
@@ -33,7 +33,7 @@ This resource does not modify your recipe, server configuration, or other resour
 | `tickIntervalMs` / `clientIntervalMs` | Bounded server timing and client application cadence; defaults to 250 ms each. No per-frame loop. |
 | `maxCatchUpSteps` | Bounded automatic transitions after a delayed tick, `1..128`. Longer stalls hold current weather, reset the interval, rebuild forecast, and increment `catchUpResets`. |
 | `trustedResources` | Server mutation allowlist, keyed by actual invoking resource name with value `true`. Empty by default. |
-| `overrideOwners` | Client scene allowlist, keyed by invoking resource, with `{ maxPriority=0..100 }`. Empty by default. |
+| `overrideOwners` | Client scene allowlist, keyed by invoking resource, with `{ maxPriority=0..100 }`. Defaults to `feather-character` at maximum priority 10; test resources are not enabled. |
 | `maxOverrides` / `maxOverrideSeconds` | Local handle count and maximum renewable lifetime; defaults 16 / 1800 seconds. |
 | `conflictResources` | Known competing providers. Defaults to `{ 'weathersync' }`. |
 
@@ -75,7 +75,7 @@ if not result.ok then print(result.code, result.message) end
 
 `GetLocalState()` returns the authoritative epoch/revision plus effective requested presentation, winning override channels, handle count, snapshot age, and `evidence='application_attempt_only'`. It returns `unavailable` while waiting, conflicted, degraded, or reporting a native error. Temperature is not exposed in this version.
 
-`AcquireOverride(spec)` returns `{ handle, ttlSeconds }`; `UpdateOverride(handle, spec)` replaces the complete spec and renews lifetime. `ReleaseOverride(handle)` is idempotent for an absent handle and denies release of another owner's live handle.
+`AcquireOverride(spec)` returns `{ handle, ttlSeconds }`; `UpdateOverride(handle, spec)` replaces the complete spec and renews lifetime. Renewing an unchanged presentation keeps its token stable, so weather transitions are not restarted by TTL renewal. `ReleaseOverride(handle)` is idempotent for an absent handle and denies release of another owner's live handle.
 
 Scene spec fields:
 
@@ -103,7 +103,7 @@ if opened.ok then
 end
 ```
 
-Character selection/creation and stable horse previews can use this API without changing global conditions. Neither integration is installed by this resource. A bucket change alone does not acquire/release an override. Client owner checks support lifecycle coordination; they do not make a modified client authoritative or trustworthy.
+Character `0.7.3` uses this API for selection/creation without changing global conditions; its optional adapter/config lives in Character. Existing installations must merge the owner entry into their Weather config. Stable horse previews can use the same API after separately admitting their actual resource name; no stables integration is installed. A bucket change alone does not acquire/release an override. Client owner checks support lifecycle coordination; they do not make a modified client authoritative or trustworthy.
 
 ## Operator commands
 

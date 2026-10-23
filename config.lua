@@ -21,9 +21,9 @@ WeatherConfig = {
     conflictResources = { 'weathersync' },
     -- Server exports may mutate only for explicitly allowed invoking resources.
     trustedResources = {},
-    -- Client scene overrides are disabled for callers until explicitly admitted.
-    -- Example (integration is separate): ['feather-character'] = { maxPriority = 10 }
-    overrideOwners = {},
+    -- Character owns only local selection/creation presentation, never shared state.
+    -- Admit other scene consumers explicitly; development test owners are not enabled here.
+    overrideOwners = { ['feather-character'] = { maxPriority = 10 } },
     maxOverrides = 16,
     maxOverrideSeconds = 1800
 }

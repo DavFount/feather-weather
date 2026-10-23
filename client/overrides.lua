@@ -2,6 +2,16 @@
 WeatherOverrides = {}
 local O, W = WeatherOverrides, Weather
 O.__index = O
+local function SamePresentation(left, right)
+    for _, key in ipairs({'clock','weather','wind','snow','priority'}) do
+        local a, b = left[key], right[key]
+        if type(a) == 'table' and type(b) == 'table' then
+            for field, value in pairs(a) do if b[field] ~= value then return false end end
+            for field, value in pairs(b) do if a[field] ~= value then return false end end
+        elseif a ~= b then return false end
+    end
+    return true
+end
 function O.New(config, epoch)
     return setmetatable({ config=config, epoch=epoch, handles={}, serial=0 }, O)
 end
@@ -48,7 +58,9 @@ function O:Update(owner, handle, spec, now)
     if item.owner ~= owner then return W.Err('denied', 'Override belongs to another resource.') end
     local validated = self:Validate(owner, spec)
     if not validated.ok then return validated end
-    item.spec, item.expires, item.revision = validated.value, now + spec.ttlSeconds, item.revision + 1
+    -- Renewing an unchanged scene must not restart its weather transition.
+    if not SamePresentation(item.spec, validated.value) then item.revision = item.revision + 1 end
+    item.spec, item.expires = validated.value, now + spec.ttlSeconds
     return W.Ok({ handle=handle, ttlSeconds=spec.ttlSeconds })
 end
 function O:Release(owner, handle)

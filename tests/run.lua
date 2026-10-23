@@ -224,6 +224,15 @@ test('update renews TTL atomically and retains handle ordering', function()
     eq(count, 1); eq(winners.clock.token, h .. ':2')
     assert(not o:Update('scene', h, scene(), 50).ok)
 end)
+test('unchanged scene renewal extends TTL without restarting presentation', function()
+    local o = overrides(); local h = o:Acquire('scene', scene(1, 30), 0).value.handle
+    local before = o:Resolve(1).weather.token
+    assert(o:Update('scene', h, scene(1, 60), 20).ok)
+    eq(o:Resolve(40).weather.token, before)
+    local changed = scene(1, 60); changed.weather.name = 'rain'
+    assert(o:Update('scene', h, changed, 50).ok)
+    assert(o:Resolve(51).weather.token ~= before)
+end)
 test('owner stop releases only that owner channels', function()
     local o = overrides(); o:Acquire('scene', scene(), 0); o:Acquire('stables', scene(), 0)
     o:ReleaseOwner('scene')
