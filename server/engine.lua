@@ -9,8 +9,49 @@ function E.New(config, epoch, random)
         clock=W.Copy(config.clock), weather=W.Copy(config.weather), wind=W.Copy(config.wind),
         pattern=W.Copy(config.pattern), progress=0, transitionId=1, transitionRemaining=0,
         generation=0, catchUpResets=0, random=random or math.random }, E)
+    self:ResetClimate()
     self:Rebuild()
     return W.Ok(self)
+end
+
+function E:ResetClimate()
+    local season,wind=self.config.seasons,self.config.windProgression
+    self.season={enabled=season and season.enabled or false,frozen=season and season.frozen or false,
+        name=season and season.start or 'spring',day=season and season.day or 1,seconds=0,
+        daysPerSeason=season and season.daysPerSeason or 7,cycle=0}
+    self.windControl={automatic=wind and wind.enabled or false,frozen=wind and wind.frozen or false}
+    self.windTarget=W.Copy(self.wind)
+    self.windElapsed=0
+    if self.season.enabled then self.pattern=W.Copy(season.patterns[self.season.name]) end
+    if self.windControl.automatic then self:ChooseWind() end
+end
+
+function E:ChooseWind()
+    local cfg=self.config.windProgression
+    if not cfg or not self.windControl.automatic then return end
+    local range=cfg.profiles[self.weather.name] or cfg.default
+    local roll=math.max(1,math.min(100,self.random(1,100)))
+    self.windTarget={speed=range.min+(range.max-range.min)*(roll-1)/99,
+        direction=(self.wind.direction+(self.random(1,100)-50)*0.9)%360}
+    self.windElapsed=0
+end
+
+function E:AdvanceCalendar(simulationSeconds)
+    local s=self.season
+    if not s.enabled or s.frozen then return false end
+    local seasonSeconds=s.daysPerSeason*86400
+    local position=(s.day-1)*86400+s.seconds+simulationSeconds
+    local steps=math.floor(position/seasonSeconds)
+    position=position%seasonSeconds
+    s.day,s.seconds=math.floor(position/86400)+1,position%86400
+    if steps==0 then return false end
+    local index=W.SeasonIndex(s.name)-1+steps
+    s.name=W.seasonNames[index%4+1]
+    s.cycle=s.cycle+math.floor(index/4)
+    self.pattern=W.Copy(self.config.seasons.patterns[s.name])
+    self.progress=0
+    self:Rebuild()
+    return true
 end
 
 function E:Next(name)
@@ -40,7 +81,7 @@ function E:Rebuild()
     self.generation = self.generation + 1
 end
 
-function E:Advance(elapsed, wallSeconds)
+function E:Step(elapsed, wallSeconds)
     if not W.Number(elapsed, 0, math.huge) or elapsed == math.huge then return false end
     if not self.clock.frozen then
         if self.clock.mode == 'wall' then
@@ -76,14 +117,41 @@ function E:Advance(elapsed, wallSeconds)
             end
         end
     end
+    if changed then self:ChooseWind() end
+    if self.windControl.automatic and not self.windControl.frozen then
+        local cfg=self.config.windProgression
+        self.windElapsed=self.windElapsed+elapsed
+        self.wind=W.ProjectWind(self.wind,self.windTarget,elapsed,cfg.degreesPerSecond,cfg.speedPerSecond)
+        if self.windElapsed>=cfg.intervalSeconds then self:ChooseWind(); changed=true end
+    end
+    if self:AdvanceCalendar(elapsed*W.Rate(self.clock)) then changed=true end
     self.revision = self.revision + 1
+    return changed
+end
+
+function E:Advance(elapsed,wallSeconds)
+    if not W.Number(elapsed,0,math.huge) or elapsed==math.huge then return false end
+    local changed,segments=false,0
+    repeat
+        local step=elapsed
+        local s,rate=self.season,W.Rate(self.clock)
+        if s.enabled and not s.frozen and rate>0 and segments<self.config.maxCatchUpSteps then
+            step=math.min(step,((s.daysPerSeason-s.day+1)*86400-s.seconds)/rate)
+        end
+        changed=self:Step(step,wallSeconds) or changed
+        elapsed=math.max(0,elapsed-step)
+        segments=segments+1
+    until elapsed<=0
     return changed
 end
 
 function E:Snapshot()
     return W.Copy({ epoch=self.epoch, revision=self.revision, clock=self.clock, weather=self.weather,
         wind=self.wind, transitionId=self.transitionId, transitionRemainingSeconds=self.transitionRemaining,
-        scheduleGeneration=self.generation, catchUpResets=self.catchUpResets })
+        scheduleGeneration=self.generation, catchUpResets=self.catchUpResets,season=self.season,
+        windControl=self.windControl,windMotion={target=self.windTarget,
+            degreesPerSecond=self.windControl.automatic and not self.windControl.frozen and self.config.windProgression.degreesPerSecond or 0,
+            speedPerSecond=self.windControl.automatic and not self.windControl.frozen and self.config.windProgression.speedPerSecond or 0} })
 end
 
 function E:Forecast(options)
@@ -94,11 +162,14 @@ function E:Forecast(options)
     local result, rate = {}, W.Rate(self.clock)
     for index = 1, count do
         local due = self.config.weatherIntervalSeconds * index - self.progress
+        local s=self.season
+        if s.enabled and not s.frozen and due>=((s.daysPerSeason-s.day+1)*86400-s.seconds) then break end
         result[index] = { name=self.queue[index], dueSimulationSeconds=due }
         if not self.weather.frozen and rate > 0 then result[index].dueRealSeconds = due / rate end
     end
     return W.Ok({ epoch=self.epoch, revision=self.revision, generation=self.generation,
-        paused=self.weather.frozen or rate == 0, basis='elapsed_simulation', entries=result })
+        paused=self.weather.frozen or rate == 0, basis='elapsed_simulation',season=self.season.name,
+        horizon=self.season.enabled and not self.season.frozen and 'next_season_boundary' or 'configured_count',entries=result })
 end
 
 function E:Mutate(action, spec)
@@ -114,10 +185,32 @@ function E:Mutate(action, spec)
         self.transitionId = self.transitionId + 1
         self.transitionRemaining = nextValue.transitionSeconds
         self:Rebuild()
+        self:ChooseWind()
     elseif action == 'wind' then
         local nextValue = W.Merge(self.wind, spec, W.Wind)
         if not nextValue then return W.Err('invalid_input', 'Invalid wind patch.') end
         self.wind = nextValue
+        self.windControl.automatic=false
+        self.windTarget=W.Copy(nextValue)
+    elseif action == 'windControl' then
+        local nextValue=W.Merge(self.windControl,spec,W.WindControl)
+        if not nextValue or (nextValue.automatic and not self.config.windProgression) then
+            return W.Err('invalid_input','Invalid wind control patch or no configured progression.')
+        end
+        self.windControl=nextValue
+        if nextValue.automatic then self:ChooseWind() else self.windTarget=W.Copy(self.wind) end
+    elseif action == 'season' then
+        if not W.Fields(spec,{name=true,day=true,enabled=true,frozen=true}) then return W.Err('invalid_input','Invalid season patch.') end
+        local nextValue=W.Copy(self.season)
+        for k,v in pairs(spec) do nextValue[k]=v end
+        if not W.SeasonState(nextValue) or (nextValue.enabled and not self.config.seasons) then
+            return W.Err('invalid_input','Invalid season, day or calendar controls.')
+        end
+        if spec.name or spec.day then nextValue.seconds=0 end
+        self.season=nextValue
+        self.pattern=W.Copy(nextValue.enabled and self.config.seasons.patterns[nextValue.name] or self.config.pattern)
+        self.progress=0
+        self:Rebuild()
     elseif action == 'pattern' then
         if not W.Pattern(spec) then return W.Err('invalid_input', 'Pattern must be a closed ordered weighted graph; each row totals 100.') end
         self.pattern, self.progress = W.Copy(spec), 0
@@ -126,6 +219,7 @@ function E:Mutate(action, spec)
         if spec ~= nil and not W.Fields(spec, {}) then return W.Err('invalid_input', 'Reset takes no options; all domains reset.') end
         self.clock, self.weather, self.wind = W.Copy(self.config.clock), W.Copy(self.config.weather), W.Copy(self.config.wind)
         self.pattern, self.progress = W.Copy(self.config.pattern), 0
+        self:ResetClimate()
         self.transitionId = self.transitionId + 1
         self.transitionRemaining = self.weather.transitionSeconds
         self:Rebuild()

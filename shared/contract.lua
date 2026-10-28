@@ -39,6 +39,51 @@ function W.Wind(value)
     return W.Fields(value, { direction=true, speed=true })
         and W.Number(value.direction, 0, 360) and value.direction < 360 and W.Number(value.speed, 0, 30)
 end
+W.seasonNames = { 'spring', 'summer', 'autumn', 'winter' }
+function W.SeasonIndex(name)
+    for i,v in ipairs(W.seasonNames) do if v==name then return i end end
+end
+function W.WindControl(value)
+    return W.Fields(value,{automatic=true,frozen=true}) and type(value.automatic)=='boolean' and type(value.frozen)=='boolean'
+end
+function W.WindProgression(value)
+    if value==nil then return true end
+    local function range(r)
+        return W.Fields(r,{min=true,max=true}) and W.Number(r.min,0,30) and W.Number(r.max,r.min,30)
+    end
+    if not W.Fields(value,{enabled=true,frozen=true,intervalSeconds=true,degreesPerSecond=true,speedPerSecond=true,default=true,profiles=true})
+        or type(value.enabled)~='boolean' or type(value.frozen)~='boolean'
+        or not W.Number(value.intervalSeconds,5,3600) or not W.Number(value.degreesPerSecond,0.01,90)
+        or not W.Number(value.speedPerSecond,0.01,10) or not range(value.default)
+        or type(value.profiles)~='table' or getmetatable(value.profiles) then return false end
+    for name,r in pairs(value.profiles) do if not W.types[name] or not range(r) then return false end end
+    return true
+end
+function W.Seasons(value)
+    if value==nil then return true end
+    if not W.Fields(value,{enabled=true,start=true,day=true,daysPerSeason=true,frozen=true,patterns=true})
+        or type(value.enabled)~='boolean' or type(value.frozen)~='boolean' or not W.SeasonIndex(value.start)
+        or not W.Number(value.daysPerSeason,1,365,true) or not W.Number(value.day,1,value.daysPerSeason,true)
+        or not W.Fields(value.patterns,{spring=true,summer=true,autumn=true,winter=true}) then return false end
+    for _,name in ipairs(W.seasonNames) do if not W.Pattern(value.patterns[name]) then return false end end
+    return true
+end
+function W.SeasonState(value)
+    return W.Fields(value,{enabled=true,frozen=true,name=true,day=true,seconds=true,daysPerSeason=true,cycle=true})
+        and type(value.enabled)=='boolean' and type(value.frozen)=='boolean' and W.SeasonIndex(value.name)~=nil
+        and W.Number(value.daysPerSeason,1,365,true) and W.Number(value.day,1,value.daysPerSeason,true)
+        and W.Number(value.seconds,0,86400) and value.seconds<86400 and W.Number(value.cycle,0,9007199254740991,true)
+end
+function W.ProjectWind(wind,target,elapsed,directionRate,speedRate)
+    local delta=(target.direction-wind.direction+180)%360-180
+    local direction=wind.direction+math.max(-directionRate*elapsed,math.min(directionRate*elapsed,delta))
+    local speedDelta=target.speed-wind.speed
+    return {direction=direction%360,speed=wind.speed+math.max(-speedRate*elapsed,math.min(speedRate*elapsed,speedDelta))}
+end
+function W.WindMotion(value)
+    return W.Fields(value,{target=true,degreesPerSecond=true,speedPerSecond=true}) and W.Wind(value.target)
+        and W.Number(value.degreesPerSecond,0,90) and W.Number(value.speedPerSecond,0,10)
+end
 function W.Pattern(pattern)
     if type(pattern) ~= 'table' or getmetatable(pattern) then return false end
     local count = 0
@@ -103,7 +148,8 @@ end
 function W.Config(config)
     if type(config) ~= 'table' or not W.Clock(config.clock) or not W.Weather(config.weather)
         or not W.Wind(config.wind) or not W.Pattern(config.pattern)
-        or not W.RegionalPolicy(config.regions) then return false end
+        or not W.RegionalPolicy(config.regions) or not W.WindProgression(config.windProgression)
+        or not W.Seasons(config.seasons) then return false end
     if not W.Number(config.weatherIntervalSeconds, 60, W.WEEK, true)
         or not W.Number(config.forecastCount, 1, 48, true)
         or not W.Number(config.syncIntervalMs, 1000, 60000, true)
@@ -139,7 +185,8 @@ end
 
 function W.Snapshot(value)
     return W.Fields(value, { epoch=true, revision=true, clock=true, weather=true, wind=true,
-        transitionId=true, transitionRemainingSeconds=true, scheduleGeneration=true, catchUpResets=true })
+        transitionId=true, transitionRemainingSeconds=true, scheduleGeneration=true, catchUpResets=true,
+        season=true,windControl=true,windMotion=true })
         and type(value.epoch) == 'string' and #value.epoch > 0 and #value.epoch <= 100
         and W.Number(value.revision, 1, 9007199254740991, true)
         and W.Clock(value.clock) and W.Weather(value.weather) and W.Wind(value.wind)
@@ -147,4 +194,7 @@ function W.Snapshot(value)
         and W.Number(value.transitionRemainingSeconds, 0, 300)
         and W.Number(value.scheduleGeneration, 1, 9007199254740991, true)
         and W.Number(value.catchUpResets, 0, 9007199254740991, true)
+        and (value.season==nil or W.SeasonState(value.season))
+        and (value.windControl==nil or W.WindControl(value.windControl))
+        and (value.windMotion==nil or W.WindMotion(value.windMotion))
 end

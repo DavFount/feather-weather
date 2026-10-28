@@ -47,7 +47,7 @@ local function Capabilities()
     return W.Ok({ resource=resource, version=GetResourceMetadata(resource, 'version', 0), contract=W.CONTRACT,
         state=status, restartPolicy='reset_to_config', rejectedRequests=rejected,
         features={ clock=1, weather=1, forecast=1, baseWind=1, snowCoverage=1, localOverrides=1,
-            regions=1, automaticWind=false, persistence=false },
+            regions=1, automaticWind=1, seasons=1, persistence=false },
         regionPolicy={enabled=engine ~= nil and engine.config.regions ~= nil and engine.config.regions.enabled or false,
             ruleCount=engine and engine.config.regions and #engine.config.regions.rules or 0},
         limits={ maxForecast=engine and engine.config.forecastCount or 0, maxRate=120, maxTransitionSeconds=300 } })
@@ -79,7 +79,7 @@ exports('GetForecast', function(options)
     Advance()
     return engine:Forecast(options)
 end)
-for name, action in pairs({ SetClock='clock', SetWeather='weather', SetWind='wind', SetPattern='pattern', ResetEnvironment='reset' }) do
+for name, action in pairs({ SetClock='clock', SetWeather='weather', SetWind='wind', SetWindControl='windControl', SetSeason='season', SetPattern='pattern', ResetEnvironment='reset' }) do
     local operation = action
     exports(name, function(spec) return Mutate(operation, spec, false) end)
 end
@@ -138,6 +138,16 @@ end)
 Command('fwreset', function(args)
     if #args ~= 0 then return W.Err('invalid_input', 'Usage: fwreset; resets all domains to configuration.') end
     return Mutate('reset', nil, true)
+end)
+Command('fwseason', function(args)
+    if #args<1 or #args>2 then return W.Err('invalid_input','Usage: fwseason <spring|summer|autumn|winter> [day].') end
+    local day=tonumber(args[2] or '1')
+    if not day then return W.Err('invalid_input','Invalid season day.') end
+    return Mutate('season',{name=args[1],day=day,enabled=true},true)
+end)
+Command('fwwindauto', function(args)
+    if #args~=1 or (args[1]~='on' and args[1]~='off') then return W.Err('invalid_input','Usage: fwwindauto <on|off>.') end
+    return Mutate('windControl',{automatic=args[1]=='on',frozen=false},true)
 end)
 
 CreateThread(function()

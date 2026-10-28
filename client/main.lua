@@ -114,11 +114,15 @@ local function Project(now)
     local regionalName, regionalSnow = regions:Translate(snapshot.weather.name,snapshot.weather.snow)
     -- Crossing a climate boundary blends even when global weather has not changed.
     transition = math.max(transition,regions:TransitionFloor(now))
+    local wind=snapshot.wind
+    if snapshot.windMotion then
+        wind=W.ProjectWind(wind,snapshot.windMotion.target,age,snapshot.windMotion.degreesPerSecond,snapshot.windMotion.speedPerSecond)
+    end
     return { clock=winners.clock and winners.clock.value or clock,
         weather=winners.weather and winners.weather.value or { name=regionalName, transitionSeconds=transition },
         weatherToken=winners.weather and winners.weather.token
             or (snapshot.epoch .. ':' .. snapshot.transitionId .. ':' .. regionalName),
-        wind=winners.wind and winners.wind.value or snapshot.wind,
+        wind=winners.wind and winners.wind.value or wind,
         snow=winners.snow and winners.snow.value or (not winners.snow and regionalSnow or false),
         channels=winners, overrideCount=count, region=regions:Context(now), authoritativeWeather=snapshot.weather.name }
 end

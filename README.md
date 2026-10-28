@@ -1,6 +1,6 @@
 # Feather Weather
 
-World time, weather, and climate synchronization for RedM. Version `0.2.2`, Contract 1.
+World time, weather, and climate synchronization for RedM. Version `0.1.0` (unreleased), Contract 1.
 
 A standalone service with no mandatory Core, database, Menu, or UI dependency. The initial baseline and Character integration have recorded user-reported live acceptance. Regional presentation is enabled by default following representative gameplay acceptance; custom policies and other server builds still require validation.
 
@@ -38,7 +38,19 @@ This resource does not modify your recipe, server configuration, or other resour
 | `maxOverrides` / `maxOverrideSeconds` | Local handle count and maximum renewable lifetime; defaults 16 / 1800 seconds. |
 | `conflictResources` | Known competing providers. Defaults to `{ 'weathersync' }`. |
 
-Defaults provide sunny/clouds/overcast/rain progression, 30x clock, and constant calm wind. Weather forecast entries remain global policy even when optional local translation is enabled. There is no temperature-driven climate, altitude wind, automatic wind progression, FiveM support, or bundled NUI.
+Defaults provide a 30x clock, enabled seasonal weather patterns, gradual automatic wind and regional presentation. There is no temperature-driven climate, altitude wind, FiveM support or bundled NUI. Operator controls use optional Feather Admin; Weather still works independently.
+
+## Wind progression and seasons
+
+`windProgression` defines initial enabled/frozen controls, a real-time target interval (60 seconds by default), speed/direction slew limits and per-weather speed ranges. Targets change when shared weather changes or the interval expires. Current wind approaches its target gradually; clients project the same movement between snapshots. Wind freeze is independent of clock/weather/calendar freezes. `SetWind` applies manual values and disables automatic progression until resumed through `SetWindControl({automatic=true})`, Admin or `fwwindauto on`. Reset restores all configured defaults. Missing `windProgression` keeps older configs manual.
+
+`seasons` defines enabled/frozen state, starting season/day, days per season and four validated weighted weather graphs. Defaults cycle spring → summer → autumn → winter, seven simulation days each. Calendar time follows simulated rate (or elapsed real seconds in wall mode) independently of clock freeze; rate zero pauses it. Calendar freeze does not stop weather progression. Seasons reset on resource restart; no database persistence, host timezone or real-world calendar dependency is introduced. Winter increases snowy forecast choices but does not force ground coverage; regional desert/tropical translations still apply.
+
+`SetSeason({name='winter',day=1,enabled=true,frozen=false})` selects the calendar and rebuilds the future forecast, without replacing current weather or overriding a manual weather freeze. The next automatic weather interval uses the selected graph; unfreeze weather to resume progression. Day is bounded by configured `daysPerSeason`. Forecasts stop before the next unfrozen season boundary rather than claiming queued choices from the next graph. A custom `SetPattern` lasts until the next seasonal graph change, season-setting change or reset. Disabling seasons restores the base graph. Missing `seasons` keeps older configurations on the base graph.
+
+`GetState()` snapshots add `season`, `windControl` and `windMotion`. Existing consumers can continue reading clock/weather/wind; client scene wind overrides still take precedence over the projected shared wind. Server capabilities advertise seasons/automaticWind support separately from their live control state.
+
+Feather Admin is trusted by exact resource name in the default server mutation allowlist. Its Weather and seasons page uses server-enforced Authority capabilities and an audited, rate-limited RPC bridge. Removing its trust entry makes mutations fail closed; neither resource gains a mandatory dependency on the other.
 
 If manual weather has no graph row, automatic progression resumes through the configured default row, or the alphabetically first graph row when the default is absent. Setting a pattern can therefore replace the entire graph safely.
 
@@ -90,7 +102,9 @@ Common failures: `invalid_config`, `invalid_input`, `denied`, `unavailable`, `li
 | `GetForecast({ count=... })` | Bounded future weather entries with relative simulation seconds and, when progressing, estimated real seconds. No absolute clock-time guarantee. |
 | `SetClock(patch)` | Scalar patch of `mode`, `seconds`, `rate`, `frozen`, `offsetSeconds`; immediately reanchors UTC wall mode. Retains schedule choices/progress and retimes forecast estimates. |
 | `SetWeather(patch)` | Scalar patch of `name`, `frozen`, `transitionSeconds`, `snow`; resets interval and rebuilds forecast even for a freeze-only patch. |
-| `SetWind(patch)` | Scalar patch of `direction` / `speed`. |
+| `SetWind(patch)` | Scalar patch of `direction` / `speed`; switches to manual wind. |
+| `SetWindControl(patch)` | Scalar `automatic` / `frozen` booleans; resumes or holds configured wind progression. |
+| `SetSeason(patch)` | Scalar `name`, `day`, `enabled`, `frozen`; rebuilds forecast while retaining current weather. |
 | `SetPattern(pattern)` | Atomically validate/copy a complete graph, reset weather interval, rebuild forecast. |
 | `ResetEnvironment()` | Reset all domains immediately to config and rebuild forecast. No partial-reset options in this version. |
 
@@ -150,6 +164,8 @@ Console can run these directly. In-game operators need the corresponding `comman
 | `fwweather rain` | Set manual frozen weather; existing transition and snow settings are retained. |
 | `fwclock 12 30` | Set frozen simulated time to 12:30, day Sunday. |
 | `fwwind 90 2` | Set constant base wind. |
+| `fwwindauto on` | Resume automatic wind; `off` holds the current values. |
+| `fwseason winter 1` | Select winter day 1 and enable seasonal patterns. Does not unfreeze manual weather. |
 | `fwreset` | Reset all clock/weather/wind/snow settings to configured defaults. |
 
 Example scoped ACE: `add_ace group.admin command.fwweather allow`. Existing `group.admin command allow` also applies. This resource adds no ACE grants or player-facing sync bypass automatically.
